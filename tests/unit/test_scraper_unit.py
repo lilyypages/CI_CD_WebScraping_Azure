@@ -5,10 +5,8 @@ from src.scraper import scrape_tapera_sup001
 
 @patch("src.scraper.requests.get")
 def test_scrape_tapera_sup001_success(mock_get, tmp_path, monkeypatch):
-    # Ubah working directory sementara ke tmp_path agar tidak mengotori folder data/raw asli
     monkeypatch.chdir(tmp_path)
 
-    # Simulasi response CSV palsu dari server Metabase
     fake_csv_content = (
         b"provinsi,kabupaten,nama_perumahan,jumlah_unit\n"
         b"Jawa Tengah,Kota Surakarta,Griya Harmoni,120\n"
@@ -17,14 +15,13 @@ def test_scrape_tapera_sup001_success(mock_get, tmp_path, monkeypatch):
 
     mock_response = MagicMock()
     mock_response.status_code = 200
+    mock_response.headers = {"Content-Type": "text/csv"}
     mock_response.iter_content.return_value = [fake_csv_content]
     mock_response.__enter__.return_value = mock_response
     mock_get.return_value = mock_response
 
-    # Jalankan fungsi scraper
     output_file = scrape_tapera_sup001()
 
-    # Assertions (pengecekan)
     assert output_file is not None
     assert (tmp_path / output_file).exists()
 
@@ -34,8 +31,9 @@ def test_scrape_tapera_sup001_success(mock_get, tmp_path, monkeypatch):
 
 
 @patch("src.scraper.requests.get")
-def test_scrape_tapera_sup001_http_error(mock_get):
-    # Simulasi server error / timeout
+def test_scrape_tapera_sup001_http_error(mock_get, monkeypatch):
+    # Matikan flag CI sementara agar menguji perilaku murni saat HTTP error
+    monkeypatch.delenv("CI", raising=False)
     mock_get.side_effect = Exception("Connection timeout")
 
     result = scrape_tapera_sup001()
