@@ -1,0 +1,82 @@
+name: CI/CD Web Scraping Tapera ke Azure
+
+on:
+  # 1. Trigger otomatis saat ada push ke develop (CI) atau main (CI + CD)
+  push:
+    branches:
+      - develop
+      - main
+  # 2. Trigger otomatis saat Pull Request ke main
+  pull_request:
+    branches:
+      - main
+  # 3. Trigger terjadwal (Batch setiap hari jam 01:00 UTC / 08:00 WIB)
+  schedule:
+    - cron: '0 1 * * *'
+  # 4. Trigger manual lewat tombol "Run workflow" di tab Actions
+  workflow_dispatch:
+
+jobs:
+  # ==========================================
+  # TAHAP CI: Install Dependencies & Run Pytest
+  # ==========================================
+  ci-test:
+    name: Continuous Integration (Test)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run Unit & Integration Tests (Pytest)
+        run: |
+          python -m pytest -v
+
+  # ==========================================
+  # TAHAP CD: Scrape Data & Upload ke Azure Blob
+  # (Hanya jalan jika ci-test sukses & di branch main / manual)
+  # ==========================================
+  cd-scrape-and-deploy:
+    name: Continuous Deployment (Scrape & Upload Azure)
+    needs: ci-test
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Jalankan Web Scraper BP Tapera
+        run: |
+          python src/scraper.py
+
+      - name: Upload hasil CSV ke Azure Blob Storage
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+        run: |
+          az storage blob upload-batch \
+            --destination tapera-raw \
+            --source data/raw \
+            --pattern "*.csv" \
+            --overwrite
